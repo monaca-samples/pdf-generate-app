@@ -1,0 +1,142 @@
+<template>
+    <div class="page" data-name="catalog">
+        <div class="navbar">
+            <div class="navbar-bg"></div>
+            <div class="navbar-inner sliding">
+                <div class="title">PDF</div>
+            </div>
+        </div>
+        <div class="page-content">
+            <div class="list no-hairlines-md">
+                <ul>
+                    <li class="item-content item-input">
+                        <div class="item-inner">
+                            <div class="item-input-wrap">
+                                <textarea id="markdown" class="resizable"># 見出し123
+ここに本文を書きます。
+
+- リスト1
+- リスト2
+
+[リンク](https://ja.monaca.io/)
+                </textarea>
+                            </div>
+                        </div>
+                    </li>
+                </ul>
+                <div class="block block-strong">
+                    <div class="row">
+                        <button class="button col" @click="${create}">作成</button>
+                        <button class="button col" @click="${readFile}">読み込み</button>
+                    </div>
+                </div>
+                <canvas id="pdfCanvas"></canvas>
+            </div>
+        </div>
+    </div>
+</template>
+<script>
+    export default (props, {
+        $store,
+        $onMounted
+    }) => {
+        const create = async () => {
+            const html = marked.parse($('#markdown').val());
+            const content = htmlToPdfmake(html);
+            const dd = {
+                defaultStyle: {
+                    font: "ipa"
+                },
+                content
+            };
+            // PDFを生成
+            const pg = pdfMake.createPdf(dd)
+            // 生成した内容をBlob形式で取得
+            const blob = await pg.getBlob();
+            // ファイルシステムのリクエスト
+            const fs = await requestFileSave();
+            // 書き込み用ファイルのリクエスト
+            const file = await getFile(fs);
+            // ファイル書き込み
+            const res = await writeFile(file, blob);
+            // 保存完了ダイアグラム
+            alert(`ファイルを保存しました ${file.nativeURL}`)
+        };
+
+        // ファイルシステムのリクエスト
+        const requestFileSave = () => {
+            return new Promise((res, rej) => {
+                window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, res, rej);
+            });
+        };
+
+        // 書き込み用ファイルのリクエスト
+        const getFile = (fs) => {
+            return new Promise((res, rej) => {
+                fs.root.getFile("export.pdf", {
+                    create: true,
+                    exclusive: false
+                }, res, rej);
+            });
+        };
+
+        // PDFファイル書き込み
+        const writeFile = (file, data) => {
+            return new Promise((res, rej) => {
+                file.createWriter(fileWriter => {
+                    fileWriter.onwriteend = res;
+                    fileWriter.onerror = rej;
+                    fileWriter.write(data);
+                });
+            });
+        };
+
+        // PDFファイルの読み込み
+        const readFile = (fs) => {
+            window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function (fs) {
+                fs.root.getFile("export.pdf", { create: false, exclusive: true }, function (fileEntry) {
+                    fileEntry.file(function (file) {
+                        var reader = new FileReader();
+                        reader.onloadend = function () {
+                            // ここで読み込んだPDFデータを取り扱う
+                            // この例では、単純にコンソールにログとして出力しています。
+                            console.log("PDF data: " + this.result);
+                            displayPDF(this.result)
+                        };
+
+                        reader.readAsArrayBuffer(file);
+                    }, function (error) {
+                        console.error("Failed to read file: " + error.code);
+                    });
+                });
+            }, function (error) {
+                console.error("Failed to request file system: " + error.code);
+            });
+        };
+
+        // PDFファイルの表示 (id:pdfCanvasに表示する)
+        const displayPDF = (data) => {
+            var loadingTask = pdfjsLib.getDocument({ data: data });
+            loadingTask.promise.then(function (pdf) {
+                pdf.getPage(1).then(function (page) {
+                    var viewport = page.getViewport({
+                        scale: 1.5
+                    });
+
+                    var canvas = document.getElementById('pdfCanvas');
+                    var context = canvas.getContext('2d');
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+
+                    var renderContext = {
+                        canvasContext: context,
+                        viewport: viewport
+                    };
+                    page.render(renderContext);
+                });
+            });
+        };
+
+        return $render;
+    }
+</script>
